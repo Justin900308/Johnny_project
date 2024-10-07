@@ -612,8 +612,8 @@ class Server:
 
 
             # to test each johnny, enter the name and the desired values
-            self.ref['Johnny07'][1] = 0 # angular rate
-            self.ref['Johnny07'][0] = 0 # linear velocity
+            self.ref['Johnny07'][1] = 3 # angular rate
+            self.ref['Johnny07'][0] = 8 # linear velocity
             #self.ref['Johnny04'][1] = 10
             #self.ref['Johnny04'][0] = ref_vel_comm
             #self.ref['Johnny08'][1] = ref_vrot_comm
@@ -830,7 +830,7 @@ if __name__ == '__main__':
 
 
 
-    Samp_Num = 500 # enter the desired number of samples
+    Samp_Num = 2000 # enter the desired number of samples
 
 
 
@@ -863,13 +863,14 @@ if __name__ == '__main__':
     t0 = time.time()
     print("start")
     print(t0 - time.time())
-    D = 5000
+    D = 100
     T_history = np.array([[0]])
     # data = np.zeros((1,10000))
     counter = 1
     Position = np.array([[0, 0]])
     Rotation = np.array([[0]])
-    Distance = np.array([[0]])
+    Distance_PNT = np.array([[0,0,0]])
+    Distance_vicon = np.array([[0, 0, 0]])
     #os.system("TELNET 172.20.10.3 23 -f " + str(time.time()))
     #os.system("sen s")
     while( time.time()-t0 < D):
@@ -930,23 +931,36 @@ if __name__ == '__main__':
             # print(modified_string)
             int_list = [int(num) for num in str_list]
             # print(str_list)
-            arr = 9999 # this is the tag
+            arr = np.array([0,0,0]) # this is the tag
             arr = np.array(int_list)
-            arr = np.array([arr[:1]])
+            arr = np.array([arr[:3]])
             if arr.size == 0:
-                arr = np.array([[0]])
+                arr = np.array([[0,0,0]])
             #print(arr)
-
-            if arr != 9999 : # if arr is the same as the tag, which means no data is received
+            NORM=LA.norm(arr)
+            #markerB=[-77.60075907, 136.31153715, 17.75863121]
+            #markerA = [-29.8673472,  -56.01771451,   8.62141043]
+            #markerC = [98.25260942,  0.90669935,  8.7235173 ]
+            if NORM != 0 : # if arr is the same as the tag, which means no data is received
                 Position = np.concatenate((Position, p_array), axis=0)
                 T_history = np.concatenate((T_history, T), axis=0)
                 Rotation = np.concatenate((Rotation,r_array),axis=0)
-                Distance = np.concatenate((Distance,arr),axis=0)
+                Distance_PNT = np.concatenate((Distance_PNT,arr),axis=0)
 
-            if Distance.size >= Samp_Num:
+            if Distance_PNT.size >= Samp_Num:
                 break
 
-            print(" Progress "+str(np.round(Distance.size/Samp_Num*100))+ "%      Distance "+str(arr))
+            p = a[name][0][:3]
+            p_array = np.array([p])/1000
+            markerA = np.array([[-29.8673472,  -56.01771451, 2.608*100-7.86554049]])/100
+            markerB = np.array([[-77.60075907, 136.31153715, 2.608 * 100 - 7.86554049]]) / 100
+            markerC = np.array([[98.25260942,  0.90669935, 2.608 * 100 - 7.86554049]]) / 100
+            #Dist_vicon = LA.norm(p_array-markerA)*100
+            Dist_vicon = np.array([[LA.norm(p_array-markerA)*100, LA.norm(p_array-markerB)*100, LA.norm(p_array-markerC)*100]])
+            #2.608
+            #[58.92312925 128.27988516   7.40130789]
+            #reset rx tx
+            print(" Progress: "+str(np.round(Distance_PNT.size/Samp_Num*100))+ "%      Distance PNT: "+str(arr)+ "  Distance Vicon:  "+ str(Dist_vicon))
 
 
     Robot.plot = False
@@ -958,7 +972,7 @@ if __name__ == '__main__':
 
     DATA = np.concatenate((T_history,Position),axis=1)
     DATA = np.concatenate((DATA,Rotation),axis=1)
-    DATA = np.concatenate((DATA,Distance),axis=1)
+    DATA = np.concatenate((DATA,Distance_PNT),axis=1)
 
 
     dT = pd.DataFrame(DATA)
