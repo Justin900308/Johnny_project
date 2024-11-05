@@ -3,10 +3,12 @@ from numpy import linalg as LA
 import numpy as np
 import matplotlib.pyplot as plt
 import cvxpy as cp
+from scipy.interpolate import InterpolatedUnivariateSpline
+
 
 # Input
 
-P_des = np.array(([[10, 10]]))
+P_des = np.array(([[15, 10]]))
 P_ini = np.array(([[0, 0]]))
 
 Ts = 0.1  # Sampling time
@@ -78,14 +80,14 @@ def trajectory_gen(P_des, P_ini, obs_center, R, T):
     theta = np.linspace(0, 2 * np.pi, 201)
     x_theta = R * np.cos(theta)
     y_theta = R * np.sin(theta)
-    plt.figure(1)
+
 
     for i in range(int(T)):
         plt.plot(X[0, :], X[1, :], '.')
         plt.plot(obs_center[i, 0] + x_theta, obs_center[i, 1] + y_theta)
 
     # Start the iterative optimization process
-    for k in range(201):
+    for k in range(30):
 
         # Define variables for optimization
         w = cp.Variable((2, N - 1))
@@ -173,29 +175,75 @@ def trajectory_gen(P_des, P_ini, obs_center, R, T):
         for i in range(T):
             ss[i] = LA.norm(X[0:2, i] - obs_center[i, :], 2) - R
 
-
-        if (np.min(ss) > 0) and (k > 20):
+        if (np.min(ss) > 0) and (k > 4):
             break
-
-        print('Iteration:  ', k+1)
+        print(np.min(ss) )
+        print('Iteration:  ', k + 1)
 
     # Final trajectory plot
     plt.clf()
     return (X, u)
 
 
+######################### Main
 X, u = trajectory_gen(P_des, P_ini, obs_center, R, T)
 
+T_series = np.zeros((1, T+1))
+for i in range(T+1):
+    T_series[0, i] = Ts * i
+
+Discre_x=X[0:1,:]
+Discre_y=X[1:2,:]
 
 
-plt.figure(2)
+
+spline_x = InterpolatedUnivariateSpline(T_series, X[0:1,:], k=2)
+spline_y = InterpolatedUnivariateSpline(T_series, X[1:2,:], k=2)
+spline_u = InterpolatedUnivariateSpline(T_series, X[2:3,:], k=2)
+spline_v = InterpolatedUnivariateSpline(T_series, X[3:4,:], k=2)
+
+t_continuous = np.linspace(T_series[0], T_series[-1], 1000)
+
+X_continuous = spline_x(t_continuous)
+Y_continuous = spline_y(t_continuous)
+u_continuous = spline_u(t_continuous)
+v_continuous = spline_v(t_continuous)
+
+# Create a 2x2 grid of subplots
+fig, axs = plt.subplots(2, 2, figsize=(10, 8))
+
+# Plot each subplot
+axs[0, 0].plot(t_continuous[0,:], X_continuous[0,:], 'r')
+axs[0, 0].set_title('X Position data')
+
+axs[0, 1].plot(t_continuous[0,:], Y_continuous[0,:], 'r')
+axs[0, 1].set_title('Y Position data')
+
+axs[1, 0].plot(t_continuous[0,:], u_continuous[0,:], 'r')
+axs[1, 0].set_title('u data')
+
+axs[1, 1].plot(t_continuous[0,:], v_continuous[0,:], 'r')
+axs[1, 1].set_title('v data')
+
+# Add some space between plots and display
+plt.tight_layout()
+plt.show()
+
+
+
+
+
+
+
+
 for i in range(int(T)):
-    plt.plot(X[0, i], X[1, i], '.')
+    plt.plot(X[0, :i], X[1, :i], '.')
     theta = np.linspace(0, 2 * np.pi, 201)
     x_theta = R * np.cos(theta)
     y_theta = R * np.sin(theta)
     plt.plot(obs_center[i, 0] + x_theta, obs_center[i, 1] + y_theta)
-    plt.xlim((0, 15))
-    plt.ylim((0, 15))
+    plt.xlim((P_ini[0, 0] - 0, P_des[0, 0] + 5))
+    plt.ylim((P_ini[0, 1] - 0, P_des[0, 1] + 5))
+    plt.plot(P_des[0, 0], P_des[0, 1], 'r.', markersize=10)
     plt.pause(0.001)
     plt.clf()
