@@ -3,13 +3,16 @@
 
 import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib import animation
 from numpy import linalg as LA
 from vicon_dssdk import ViconDataStream
 import argparse
 import sys
 from digi.xbee.devices import XBeeDevice
 from digi.xbee.devices import RemoteZigBeeDevice
+import matplotlib
 
+import matplotlib.pyplot as plt
 from digi.xbee.models.address import XBee64BitAddress
 from digi.xbee.models.status import NetworkDiscoveryStatus
 from digi.xbee.devices import XBeeDevice, RemoteXBeeDevice
@@ -307,9 +310,9 @@ class Server:
         self.init_var()
 
         self.stop = False
-        # self.live_plot(True)
+        self.live_plot(True)
         self.t = np.zeros((1, 50), dtype=float)
-
+        self.dt = []
         self.johnny_state_update()
         self.johnny_velocity_control()
 
@@ -322,15 +325,17 @@ class Server:
         self.vflp = 0
         self.vd = 0
 
+
         self.cycle_update()
         self.cycle_control()
-
+        # self.cycle_plot()
+        #self.johnny_plot(True)
     def johnny_state_update(self):  # updating the state
 
         self.t[0, :-1] = self.t[0, 1:]
         self.t[0, -1] = time.time() - self.t0
         self.vicon.GetFrame()
-
+        self.dt.append(self.t[-1] - time.time())
         for subName in self.subjectNames:
             pos = np.asarray(self.vicon.GetSegmentGlobalTranslation(subName, subName)[0])
             rot = np.asarray(self.vicon.GetSegmentGlobalRotationEulerXYZ(subName, subName)[0])
@@ -433,8 +438,8 @@ class Server:
 
             ref_vrot = self.ref[subName][1]
             ref_vel = self.ref[subName][0]
-            print(subName + '  Linear_velocity: ' + str(ref_vel[0]) + '   Angular velocity:  ' + str(
-                ref_vrot[2]) + '  Pos  ' + str(pos / 10) + '  P_des  ' + str(P_des))
+            # print(subName + '  Linear_velocity: ' + str(ref_vel[0]) + '   Angular velocity:  ' + str(
+            #     ref_vrot[2]) + '  Pos  ' + str(pos / 10) + '  P_des  ' + str(P_des))
 
 
             # velocity open loop control (neutral input=100)
@@ -521,6 +526,146 @@ class Server:
             # print('control cycle')
             self.data.update({subName: [data_v, data_rz]})
 
+
+    # def johnny_plot(self,doblit=True):  # updating the state
+    #
+    #     self.t[0, :-1] = self.t[0, 1:]
+    #     self.t[0, -1] = time.time() - self.t0
+    #     self.vicon.GetFrame()
+    #
+    #     for subName in self.subjectNames:
+    #         pos = np.asarray(self.vicon.GetSegmentGlobalTranslation(subName, subName)[0])
+    #         rot = np.asarray(self.vicon.GetSegmentGlobalRotationEulerXYZ(subName, subName)[0])
+    #         frame_rate = self.vicon.GetFrameRate()
+    #         [vf, pd] = derivative_vel_filter(self.pdata[subName], pos)
+    #         [vflp, vd] = lowpass_vel_filter(self.vfilter[subName], vf)
+    #         self.vf = vf
+    #         self.pd = pd
+    #         self.vflp = vflp
+    #         self.vd = vd
+    #         self.pdata.update({subName: pd})
+    #         # pdata_array=pdata[subName] #from mm to cm
+    #         self.vfilter.update({subName: vd})
+    #         self.rfilter.update({subName: om_filter(self.rfilter[subName], rot)})
+    #         self.mover[subName] = np.array([pos, rot, vflp, self.rfilter[subName][0]])
+    #         P = self.mover[subName][0,0:2]/10 # in cm
+    #         # plt.plot(P[0],P[1])
+    #         # plt.show()
+    #         fig, ax = plt.subplots()
+    #         t = np.linspace(0, 3, 40)
+    #         g = -9.81
+    #         v0 = 12
+    #         z = g * t ** 2 / 2 + v0 * t
+    #
+    #         v02 = 5
+    #         z2 = g * t ** 2 / 2 + v02 * t
+    #
+    #         scat = ax.scatter(t[0], z[0], c="b", s=5, label=f'v0 = {v0} m/s')
+    #         line2 = ax.plot(t[0], z2[0], label=f'v0 = {v02} m/s')[0]
+    #         ax.set(xlim=[0, 3], ylim=[-4, 10], xlabel='Time [s]', ylabel='Z [m]')
+    #         ax.legend()
+    #
+    #         def update(frame):
+    #             # for each frame, update the data stored on each artist.
+    #             x = t[:frame]
+    #             y = z[:frame]
+    #             # update the scatter plot:
+    #             data = np.stack([x, y]).T
+    #             scat.set_offsets(data)
+    #             # update the line plot:
+    #             line2.set_xdata(t[:frame])
+    #             line2.set_ydata(z2[:frame])
+    #             return (scat, line2)
+    #
+    #         ani = animation.FuncAnimation(fig=fig, func=update, frames=40, interval=0.01)
+    #         plt.show()
+
+    #
+
+    @threaded
+    def live_plot(self, blit=False):
+        t = np.linspace(0, 50., num=100)
+        Vx = np.zeros(t.shape)
+        Vr = np.zeros(t.shape)
+        x = np.zeros(t.shape)
+        y = np.zeros(t.shape)
+        th = np.zeros(t.shape)
+
+
+        fig = plt.figure(figsize=(5, 5))
+        ax1 = fig.add_subplot(1, 1, 1)
+
+        line1, = ax1.plot([],'g.' ,lw=3)
+
+
+        ax1.set_xlim([-800, 1500])
+        ax1.set_ylim([-800, 1500])
+        ax1.set_xlabel('X')
+        ax1.set_xlabel('Y')
+
+
+
+
+        fig.canvas.draw()  # note that the first draw comes before setting data
+
+        if blit:
+            # cache the background
+            ax1background = fig.canvas.copy_from_bbox(ax1.bbox)
+
+
+        plt.show(block=False)
+
+        # t_start = time.time()
+        k = 0.
+
+        # for i in np.arange(10000):
+        while (self.plot == True):
+            from scipy.ndimage import shift
+
+            v = self.mover[self.subjectNames[0]][2]  # convert to 10cm/s
+            # v = self.rawvel  # convert to m/s
+            r0 = self.mover[self.subjectNames[0]][3]
+
+            xx0 = self.mover[self.subjectNames[0]][0]
+            th0 = self.mover[self.subjectNames[0]][1]
+
+
+            Vx = np.concatenate((Vx[1:], [np.linalg.norm(v)]))
+            Vr = np.concatenate((Vr[1:], [r0[2]]))
+            x = np.concatenate((x[1:], [xx0[0]]))
+            y = np.concatenate((y[1:], [xx0[1]]))
+            th = np.concatenate((th[1:], [th0[2]]))
+
+
+
+
+            line1.set_data(x, y)
+
+
+            k += 0.11
+            if blit:
+                # restore background
+                fig.canvas.restore_region(ax1background)
+
+
+                # redraw just the points
+                ax1.draw_artist(line1)
+
+
+                # fill in the axes rectangle
+                fig.canvas.blit(ax1.bbox)
+
+
+            else:
+
+                fig.canvas.draw()
+
+            fig.canvas.flush_events()
+
+
+
+
+
     @threaded
     def get_agents(self):
         # get agent names
@@ -539,7 +684,7 @@ class Server:
             # print(name)
             # d = str(self.mover[name][0])+ ',' + str(self.mover[name][1])
             d = str(self.data[name][0]) + "," + str(self.data[name][1])
-            print(name + '  d= ', d)
+            #print(name + '  d= ', d)
             self.xbee.send_data_async(self.remote_devicess[i], d)
             # print('DATA')
             # print(name)
@@ -561,6 +706,17 @@ class Server:
             self.johnny_velocity_control()
             if self.stop == True:
                 break
+
+    # @threaded  # this thread is only for plotting
+    # def cycle_plot(self):
+    #     while (True):
+    #         self.johnny_plot()
+    #         if self.stop == True:
+    #             break
+
+
+
+
 
     def get_estimate(self):
         # print('')
@@ -636,6 +792,7 @@ if __name__ == '__main__':
     T_history = [0]
     # data = np.zeros((1,10000))
     counter = 1
+
     while (time.time() - t0 < D):
         t = time.time()
         T = time.time() - t0
@@ -647,6 +804,8 @@ if __name__ == '__main__':
 
             a = Robot.get_estimate()
             # print(a)
+            #self.mover[subName] = np.array([pos, rot, vflp, self.rfilter[subName][0]])
+            # a is 4*3 matrix [pos],[rot],[vflp],[self.rfilter[subName][0]]]
             p = a[name][0][:2]
             v = a[name][2][0]  # convert to m/s
             r = a[name][1][2]
@@ -663,22 +822,29 @@ if __name__ == '__main__':
             ref_w = Kw * (np.arctan2(ep[1], ep[0]) - r)
 
             # circle
-            wd = 0
+
             # vx = 0.5*wd*math.sin(wd*T)
             # vy = 0.5*wd*math.cos(wd*T)
-            v = 0
+
             # ref_v = 1000
             ref_v = 0
             ref_w = 0
             # data[:,counter] = T
             # print('t '+str(T),' T list   ' + str(np.transpose(T_history)))
+            # if np.mod(counter,10)==0:
+            #Robot.johnny_plot()
+            ########### Display the current position
+            # print(name + '  Linear_velocity: ' + str(v) + '   Angular velocity:  ' + str(
+            #     w) + '  Pos  ' + str(p))
 
+            #np.linalg.norm(v[:2])
+            # print(name + '  Linear_velocity: ' + str(v[0]) + '   Angular velocity:  ' + str(
+            #       w[2]) + '  Pos  ' + str(p) + '  P_des  ' + str(P_des))
 
             # the first three elements are the linear velocities and the last three are the angular velocities
-            u = 0
-            w = 10
-            Robot.ref['Johnny07'] = np.array([[u, u, u], [w, w, w]]) # ex: [u u u],[w w w]
+            Robot.ref['Johnny07'] = np.array([[ref_v, ref_v, ref_v], [ref_w, ref_w, ref_w]]) # ex: [u u u],[w w w]
 
+            print(p)
             # print(type(name))
             # Robot.ref['Johnny08'] = np.array([[0, 0.0, 0.0], [0.0, 0.0, 0]])
     Robot.plot = False
