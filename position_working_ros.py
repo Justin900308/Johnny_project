@@ -2,12 +2,15 @@
 
 
 import matplotlib.pyplot as plt
+from pynput import mouse
 import numpy as np
+from scipy import signal
 from matplotlib import animation
 from numpy import linalg as LA
 from vicon_dssdk import ViconDataStream
 import argparse
 import sys
+import cvxpy as cp
 from digi.xbee.devices import XBeeDevice
 from digi.xbee.devices import RemoteZigBeeDevice
 import matplotlib
@@ -34,6 +37,7 @@ data_lock = Lock()
 PORT = "COM4"
 # TODO: Replace with the baud rate of your local module.
 BAUD_RATE = 115200
+
 
 
 def callback_discovery_finished(status):
@@ -168,8 +172,6 @@ def xbee_init(names):
 
 ###### filters
 def lowpass_vel_filter(f, m):
-
-
     # order 6
     # this one somewhat working
     a1 = 0.02957
@@ -310,13 +312,13 @@ class Server:
         self.init_var()
 
         self.stop = False
-        self.live_plot(True)
         self.t = np.zeros((1, 50), dtype=float)
         self.dt = []
         self.johnny_state_update()
         self.johnny_velocity_control()
 
-        self.filtercycle()
+
+
 
         self.pos = 0
         self.rot = 0
@@ -324,12 +326,18 @@ class Server:
         self.pd = 0
         self.vflp = 0
         self.vd = 0
-
+        self.P_des = np.array([0, 0, 0])
+        self.Coord = []
+        self.live_plot(True)
+        sleep(2)
+        self.filtercycle()
 
         self.cycle_update()
         self.cycle_control()
+
         # self.cycle_plot()
-        #self.johnny_plot(True)
+        # self.johnny_plot(True)
+
     def johnny_state_update(self):  # updating the state
 
         self.t[0, :-1] = self.t[0, 1:]
@@ -393,11 +401,7 @@ class Server:
             Ew[:-1] = Ew[1:]
             Ev[-1] = ref_vel[0] - np.linalg.norm(v[:2])
 
-
             count = T[-1] % 20
-
-
-
 
             #############################################################
             # This section is doing the translation from single integrator to unicycle velocities
@@ -412,35 +416,27 @@ class Server:
             v_des = v_des[0:2]  # the third dimension is z
             v_des = v_des
 
-
-
             ref_vel_comm = 0.5 * np.array([np.cos(rot[2]), np.sin(rot[2])]) @ v_des.transpose()
             if ref_vel_comm >= 10:
                 ref_vel_comm = 10
             elif ref_vel_comm <= 0:
                 ref_vel_comm = 0
 
-
             ref_vrot_comm = 0.4 * math.atan2(np.array([-np.sin(rot[2]), np.cos(rot[2])]) @ v_des.transpose(),
                                              np.array([np.cos(rot[2]), np.sin(rot[2])]) @ v_des.transpose()) / (
-                                        np.pi / 2)
+                                    np.pi / 2)
             ref_vrot_comm = 180 / np.pi * ref_vrot_comm
             if ref_vrot_comm >= 20:
                 ref_vrot_comm = 20
             elif ref_vrot_comm <= -20:
                 ref_vrot_comm = -20
 
-
-
             ################################
-
-
 
             ref_vrot = self.ref[subName][1]
             ref_vel = self.ref[subName][0]
             # print(subName + '  Linear_velocity: ' + str(ref_vel[0]) + '   Angular velocity:  ' + str(
             #     ref_vrot[2]) + '  Pos  ' + str(pos / 10) + '  P_des  ' + str(P_des))
-
 
             # velocity open loop control (neutral input=100)
             data_v = 14.58 * ref_vel[0] + 122
@@ -526,61 +522,12 @@ class Server:
             # print('control cycle')
             self.data.update({subName: [data_v, data_rz]})
 
-
-    # def johnny_plot(self,doblit=True):  # updating the state
-    #
-    #     self.t[0, :-1] = self.t[0, 1:]
-    #     self.t[0, -1] = time.time() - self.t0
-    #     self.vicon.GetFrame()
-    #
-    #     for subName in self.subjectNames:
-    #         pos = np.asarray(self.vicon.GetSegmentGlobalTranslation(subName, subName)[0])
-    #         rot = np.asarray(self.vicon.GetSegmentGlobalRotationEulerXYZ(subName, subName)[0])
-    #         frame_rate = self.vicon.GetFrameRate()
-    #         [vf, pd] = derivative_vel_filter(self.pdata[subName], pos)
-    #         [vflp, vd] = lowpass_vel_filter(self.vfilter[subName], vf)
-    #         self.vf = vf
-    #         self.pd = pd
-    #         self.vflp = vflp
-    #         self.vd = vd
-    #         self.pdata.update({subName: pd})
-    #         # pdata_array=pdata[subName] #from mm to cm
-    #         self.vfilter.update({subName: vd})
-    #         self.rfilter.update({subName: om_filter(self.rfilter[subName], rot)})
-    #         self.mover[subName] = np.array([pos, rot, vflp, self.rfilter[subName][0]])
-    #         P = self.mover[subName][0,0:2]/10 # in cm
-    #         # plt.plot(P[0],P[1])
-    #         # plt.show()
-    #         fig, ax = plt.subplots()
-    #         t = np.linspace(0, 3, 40)
-    #         g = -9.81
-    #         v0 = 12
-    #         z = g * t ** 2 / 2 + v0 * t
-    #
-    #         v02 = 5
-    #         z2 = g * t ** 2 / 2 + v02 * t
-    #
-    #         scat = ax.scatter(t[0], z[0], c="b", s=5, label=f'v0 = {v0} m/s')
-    #         line2 = ax.plot(t[0], z2[0], label=f'v0 = {v02} m/s')[0]
-    #         ax.set(xlim=[0, 3], ylim=[-4, 10], xlabel='Time [s]', ylabel='Z [m]')
-    #         ax.legend()
-    #
-    #         def update(frame):
-    #             # for each frame, update the data stored on each artist.
-    #             x = t[:frame]
-    #             y = z[:frame]
-    #             # update the scatter plot:
-    #             data = np.stack([x, y]).T
-    #             scat.set_offsets(data)
-    #             # update the line plot:
-    #             line2.set_xdata(t[:frame])
-    #             line2.set_ydata(z2[:frame])
-    #             return (scat, line2)
-    #
-    #         ani = animation.FuncAnimation(fig=fig, func=update, frames=40, interval=0.01)
-    #         plt.show()
-
-    #
+    def onclick(self,event):
+        print('%s click: button=%d, x=%d, y=%d, xdata=%f, ydata=%f' %
+              ('double' if event.dblclick else 'single', event.button,
+               event.x, event.y, event.xdata, event.ydata))
+        self.Coord = np.array([event.xdata, event.ydata, 8.6])
+        print(self.Coord)
 
     @threaded
     def live_plot(self, blit=False):
@@ -591,27 +538,21 @@ class Server:
         y = np.zeros(t.shape)
         th = np.zeros(t.shape)
 
-
         fig = plt.figure(figsize=(5, 5))
         ax1 = fig.add_subplot(1, 1, 1)
 
-        line1, = ax1.plot([],'g.' ,lw=3)
-
-
+        line1, = ax1.plot([], 'g.', lw=3)
+        line2, = ax1.plot([], 'ro', lw=3)
         ax1.set_xlim([-800, 1500])
         ax1.set_ylim([-800, 1500])
         ax1.set_xlabel('X')
         ax1.set_xlabel('Y')
-
-
-
 
         fig.canvas.draw()  # note that the first draw comes before setting data
 
         if blit:
             # cache the background
             ax1background = fig.canvas.copy_from_bbox(ax1.bbox)
-
 
         plt.show(block=False)
 
@@ -623,35 +564,40 @@ class Server:
             from scipy.ndimage import shift
 
             v = self.mover[self.subjectNames[0]][2]  # convert to 10cm/s
-            # v = self.rawvel  # convert to m/s
             r0 = self.mover[self.subjectNames[0]][3]
 
             xx0 = self.mover[self.subjectNames[0]][0]
             th0 = self.mover[self.subjectNames[0]][1]
+            mdi = fig.canvas.mpl_connect('button_press_event', self.onclick)
+            if  self.Coord==[]:
+                print("List is empty")
+                Pdes = self.P_des * 10
 
-
+            else:
+                print(self.P_des)
+                Pdes = self.Coord[0:2]
+                self.P_des = self.Coord
+            #Pdes = self.P_des*10
+            #print(self.Coord)
             Vx = np.concatenate((Vx[1:], [np.linalg.norm(v)]))
             Vr = np.concatenate((Vr[1:], [r0[2]]))
             x = np.concatenate((x[1:], [xx0[0]]))
             y = np.concatenate((y[1:], [xx0[1]]))
             th = np.concatenate((th[1:], [th0[2]]))
 
-
-
-
             line1.set_data(x, y)
-
+            line2.set_data(Pdes[0], Pdes[1])
 
             k += 0.11
             if blit:
                 # restore background
                 fig.canvas.restore_region(ax1background)
 
-
                 # redraw just the points
                 ax1.draw_artist(line1)
+                ax1.draw_artist(line2)
 
-
+                #coords = plt.ginput(5)
                 # fill in the axes rectangle
                 fig.canvas.blit(ax1.bbox)
 
@@ -662,14 +608,17 @@ class Server:
 
             fig.canvas.flush_events()
 
-
-
-
-
     @threaded
     def get_agents(self):
         # get agent names
         return self.subjectNames
+
+    @threaded
+    def on_click(x, y, button, pressed):
+        if pressed:
+            print(f"Mouse clicked with {button}")
+        else:
+            print(f"Mouse released with {button}")
 
     def get_frame(self):
         print('Vicon frame')
@@ -684,7 +633,7 @@ class Server:
             # print(name)
             # d = str(self.mover[name][0])+ ',' + str(self.mover[name][1])
             d = str(self.data[name][0]) + "," + str(self.data[name][1])
-            #print(name + '  d= ', d)
+            # print(name + '  d= ', d)
             self.xbee.send_data_async(self.remote_devicess[i], d)
             # print('DATA')
             # print(name)
@@ -707,16 +656,185 @@ class Server:
             if self.stop == True:
                 break
 
-    # @threaded  # this thread is only for plotting
-    # def cycle_plot(self):
-    #     while (True):
-    #         self.johnny_plot()
-    #         if self.stop == True:
-    #             break
+    def trajectory_gen(self, P_des, P_ini, obs_center, R, T, Num_agent, Num_obs):
 
+        # Define system matrices
+        A = np.array([[0, 0, 1, 0], [0, 0, 0, 1], [0, 0, 0, 0], [0, 0, 0, 0]])
+        B = np.array([[0, 0], [0, 0], [1, 0], [0, 1]])
+        C = np.eye(4)
+        D = np.zeros((4, 2))
+        Ts = 0.1
+        T_end = 12
+        # Continuous-time system
+        sys = signal.StateSpace(A, B, C, D)
 
+        # Discretize the system
+        sysd = sys.to_discrete(Ts)
+        Ad = sysd.A
+        Bd = sysd.B
 
+        # Initialize state and input arrays
+        count = 0
+        X = np.zeros((4 * Num_agent, 1))  # State trajectory
+        X[:, 0] = np.array([P_ini[0, 0], P_ini[0, 1], 0, 0])  # Initial state
 
+        u = np.empty((2 * Num_agent, 0))  # Initialize u as an empty 2x0 array to store control inputs
+
+        # Compute the initial trajectory
+        for t in range(T):
+            P_err = P_des - X[0:2, t].T
+            u_des = 0.05 * P_err
+            u = np.concatenate((u, u_des.T), axis=1)  # Append control input [1, 1]
+            # Compute the next state
+            X = np.hstack((X, Ad @ X[:, count].reshape(-1, 1) + Bd @ u[:, count].reshape(-1, 1)))
+            count += 1
+
+        # Plot the trajectory
+        plt.plot(X[0, :], X[1, :], '.')
+        plt.xlabel('X1')
+        plt.ylabel('X2')
+        plt.title('Trajectory Plot')
+        plt.grid(True)
+        # plt.show()
+
+        #######################################################################
+
+        alpha = 1
+        r_default = 0.5
+
+        lambda_param = 10000
+
+        # Time length N and trajectory state X
+        N = X.shape[1]
+
+        # Convert u to a numpy array for proper matrix operations
+        u = np.array(u)
+        u = np.reshape(u, (2, int(T_end / Ts + 1)))
+
+        # Plot the obstacle (circle)
+        theta = np.linspace(0, 2 * np.pi, 201)
+
+        for i in range(int(T)):
+            for j in range(Num_agent):
+                plt.plot(X[4 * j:j + 1, i], X[4 * j + 1:j + 2, i], 'r.', markersize=2)
+                for k in range(Num_obs):
+                    x_theta = R[k] * np.cos(theta)
+                    y_theta = R[k] * np.sin(theta)
+                    plt.plot(obs_center[i, 2 * k:2 * k + 1] + x_theta, obs_center[i, 2 * k + 1:2 * k + 2] + y_theta)
+
+        # Start the iterative optimization process
+        linear_cost = np.zeros((201, 1))
+        for interation in range(30):
+
+            # Define variables for optimization
+            w = cp.Variable((2 * Num_agent, N - 1))
+            v = cp.Variable((4 * Num_agent, N - 1))
+            d = cp.Variable((4 * Num_agent, N))
+
+            s = cp.Variable((1 * Num_obs, N - 1))
+
+            # Define the cost function
+            Linear_cost = 1 * cp.norm(((u + w)), 1) + 1 * lambda_param * cp.sum(
+                cp.sum(cp.abs(v))) + 1 * lambda_param * cp.sum(cp.pos(s))
+
+            # Define constraints
+            constraints = [d[:, 0] == np.zeros(4)]
+
+            E = np.eye(4)
+
+            for i in range(N - 1):
+
+                for j in range(Num_agent):
+                    constraints.append(
+                        X[4 * j:j + 4, i + 1] + d[4 * j:j + 4, i + 1] == (
+                                Ad @ X[4 * j:j + 4, i] + Ad @ d[4 * j:j + 4, i]) + (
+                                Bd @ u[2 * j:j + 2, i] + Bd @ w[2 * j:j + 2, i]) + E @ v[4 * j:j + 4, i])
+
+                    # constraints.append(cp.abs(w[0, i]) <= r_default)
+                    constraints.append(w[2 * j:2 * j + 1, i] <= r_default)
+                    constraints.append(-r_default <= w[0, i])
+                    constraints.append(w[2 * j + 1:2 * j + 2, i] <= r_default)
+                    constraints.append(-r_default <= w[1, i])
+
+                    # Obstacle avoidance constraint
+                    for k in range(Num_obs):
+                        constraints.append(
+                            2 * R[k] - cp.norm(X[4 * j:j + 2, i] - obs_center[i, 2 * k:+2 * k + 2], 2) - (
+                                    X[4 * j:j + 2, i] - obs_center[i, 2 * k:+2 * k + 2]).T @ (
+                                    X[4 * j:j + 2, i] + d[4 * j:j + 2, i] - obs_center[i, 2 * k:+2 * k + 2]) /
+                            cp.norm(X[4 * j:j + 2, i] - obs_center[i, 2 * k:+2 * k + 2], 2) <= s[k:k + 1, i + T * j])
+
+                        constraints.append(s[k:k + 1, i + T * j] >= 0)
+
+            # Terminal condition
+            constraints.append(X[:, N - 1] + d[:, N - 1] == np.array([P_des[0, 0], P_des[0, 1], 0, 0]))
+
+            # Define the problem
+            problem = cp.Problem(cp.Minimize(Linear_cost), constraints)
+
+            # Solve the optimization problem
+            problem.solve(solver=cp.CLARABEL)
+
+            # Update the variables after solving
+            w_val = w.value
+            v_val = v.value
+            d_val = d.value
+            s_val = s.value
+            # U_val = U.value
+            j = 1
+
+            linear_cost[interation, 0] = (1 * LA.norm(((u + w_val) * Ts), ord=1) +
+                                          1 * lambda_param * np.sum(np.sum(np.abs(v_val))) +
+                                          1 * lambda_param * np.sum(s_val))
+
+            rho0 = 0
+            rho1 = 0.25
+            rho2 = 0.7
+            if interation >= 1:
+                delta_L = (linear_cost[interation, 0] - linear_cost[interation - 1, 0]) / linear_cost[interation, 0]
+            else:
+                delta_L = 1
+            print(np.abs(delta_L))
+            if np.abs(delta_L) <= rho0:
+                r_default = np.max((r_default, 0.5))
+                X = X + d_val
+                u = u + w_val
+            elif np.abs(delta_L) <= rho1:
+                r_default = r_default
+                X = X + d_val
+                u = u + w_val
+            elif np.abs(delta_L) <= rho2:
+                r_default = r_default / 3.2
+                X = X + d_val
+                u = u + w_val
+            else:
+                X = X + d_val
+                u = u + w_val
+                r_default = 0.5
+
+            # Update the trajectory
+
+            # Plot the updated trajectory
+            for i in range(Num_agent):
+                plt.plot(X[4 * i:i + 1, :], X[4 * i + 1:i + 2, :], 'b.', markersize=2)
+                plt.pause(0.001)
+            # plt.clf()
+            ss = np.zeros((1 * Num_obs, T))
+
+            ss_max = np.array([0])
+            for i in range(T):
+                for j in range(Num_agent):
+                    for k in range(Num_obs):
+                        ss[k:k + 1, i + T * j] = LA.norm(X[4 * j:j + 2, i] - obs_center[i, 2 * k:+2 * k + 2], 2) - R[k]
+
+            if (np.min(ss) > 0) and (interation > 10):
+                break
+            # print(np.min(ss) )
+            print('Iteration:  ', interation + 1)
+
+        # Final trajectory plot
+        plt.clf()
+        return (X, u)
 
     def get_estimate(self):
         # print('')
@@ -801,50 +919,89 @@ if __name__ == '__main__':
 
         for name in Robot.subjectNames:
 
-
             a = Robot.get_estimate()
             # print(a)
-            #self.mover[subName] = np.array([pos, rot, vflp, self.rfilter[subName][0]])
+            # self.mover[subName] = np.array([pos, rot, vflp, self.rfilter[subName][0]])
             # a is 4*3 matrix [pos],[rot],[vflp],[self.rfilter[subName][0]]]
             p = a[name][0][:2]
             v = a[name][2][0]  # convert to m/s
             r = a[name][1][2]
             w = a[name][3][2]
 
-            # print(v)
+            # print(counter)
 
-            # print(r)
+            # if np.mod(counter,100)==0:
+            #     # Create a listener for mouse events
+            #     with mouse.Listener(on_click=Robot.on_click) as listener:
+            #         listener.join()
 
-            Kv = 1
-            Kw = 1
-            ep = [0, 0] - p
-            ref_v = Kv * np.linalg.norm(ep)
-            ref_w = Kw * (np.arctan2(ep[1], ep[0]) - r)
 
-            # circle
 
-            # vx = 0.5*wd*math.sin(wd*T)
-            # vy = 0.5*wd*math.cos(wd*T)
+            # with mouse.Listener(on_click=Robot.on_click) as listener:
+            #     listener.join()
+
+
+
+
+
+
+            #P_des = np.array([75.4, -8.9, 8.6])
+
+            Pos=a[name][0][:]
+            Rot =  a[name][1][2]
+            P = Pos[0:2] / 1000  # in m
+            #Robot.P_des= P_des
+
+            P_des = Robot.P_des
+            # obstacle avoidance with APF
+            obs_center = np.array([238, 585]) / 1000  # in m
+            obs_radi = 0.05  # in m
+
+
+            # print('rho:    '+ str(rho*100) +'    v_rep: ' + str(v_rep))
+            v_des = (P_des - 0.1 * Pos)
+            v_des = v_des[0:2]  # the third dimension is z
+            v_des = v_des
+
+            # transfer the desired velocity from cartesian coordinate into polar coordinate for unicycle control
+            # linear velocity control
+            ref_vel_comm = 0.5 * np.array([np.cos(Rot), np.sin(Rot)]) @ v_des.transpose()
+            if ref_vel_comm >= 10:
+                ref_vel_comm = 10
+            elif ref_vel_comm <= 0:
+                ref_vel_comm = 0
+
+            # angular velocity control
+            ref_vrot_comm = 0.4 * math.atan2(np.array([-np.sin(Rot), np.cos(Rot)]) @ v_des.transpose(),
+                                             np.array([np.cos(Rot), np.sin(Rot)]) @ v_des.transpose()) / (
+                                    np.pi / 2)
+            ref_vrot_comm = 180 / np.pi * ref_vrot_comm
+            if ref_vrot_comm >= 20:
+                ref_vrot_comm = 20
+            elif ref_vrot_comm <= -20:
+                ref_vrot_comm = -20
+
+            # print(name + '  Linear_velocity: ' + str(ref_vel_comm) + '   Angular velocity:  ' + str(
+            #     ref_vrot_comm) + '  Pos  ' + str(Pos / 10) + '  P_des  ' + str(P_des))
+
+
+
+            # velocity open loop control (neutral input=100)
+            # ref_vel_comm = 0
+            # ref_vrot_comm = 0
 
             # ref_v = 1000
             ref_v = 0
             ref_w = 0
-            # data[:,counter] = T
-            # print('t '+str(T),' T list   ' + str(np.transpose(T_history)))
-            # if np.mod(counter,10)==0:
-            #Robot.johnny_plot()
-            ########### Display the current position
-            # print(name + '  Linear_velocity: ' + str(v) + '   Angular velocity:  ' + str(
-            #     w) + '  Pos  ' + str(p))
 
-            #np.linalg.norm(v[:2])
-            # print(name + '  Linear_velocity: ' + str(v[0]) + '   Angular velocity:  ' + str(
-            #       w[2]) + '  Pos  ' + str(p) + '  P_des  ' + str(P_des))
+
+
 
             # the first three elements are the linear velocities and the last three are the angular velocities
-            Robot.ref['Johnny07'] = np.array([[ref_v, ref_v, ref_v], [ref_w, ref_w, ref_w]]) # ex: [u u u],[w w w]
-
-            print(p)
+            # Robot.ref['Johnny07'] = np.array([[ref_v, ref_v, ref_v], [ref_w, ref_w, ref_w]]) # ex: [u u u],[w w w]
+            Robot.ref['Johnny07'] = np.array([[ref_vel_comm, ref_vel_comm, ref_vel_comm],
+                                              [ref_vrot_comm, ref_vrot_comm, ref_vrot_comm]])  # ex: [u u u],[w w w]
+            # print(p)
             # print(type(name))
             # Robot.ref['Johnny08'] = np.array([[0, 0.0, 0.0], [0.0, 0.0, 0]])
     Robot.plot = False
