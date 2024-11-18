@@ -1,5 +1,5 @@
 # Working version
-
+import pickle
 import socket
 import matplotlib.pyplot as plt
 from pynput import mouse
@@ -316,7 +316,7 @@ class Server:
         self.dt = []
         self.johnny_state_update()
         self.johnny_velocity_control()
-
+        self.position_transmission()
 
 
 
@@ -328,7 +328,7 @@ class Server:
         self.vd = 0
         self.P_des = np.array([75.4, -8.9, 8.6])
         self.Coord = []
-        #self.position_comm()
+        self.data_transmission()
         # sleep(2)
         #self.live_plot(True)
         #sleep(2)
@@ -340,7 +340,8 @@ class Server:
         # self.cycle_plot()
         # self.johnny_plot(True)
 
-    def position_comm(self):
+
+    def position_transmission(self):
         # Create a socket object (IPv4, TCP)
         client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
 
@@ -357,19 +358,36 @@ class Server:
             for name in self.subjectNames:
 
 
-                DATA=self.mover[name]
+                DATA=self.mover
 
-                Pos=DATA[0,:]
+                #Pos=DATA[0,:]
 
+                # Create a NumPy array to send
+                array_to_send = DATA
+                # array_to_send = Pos
+                print(f"Sending array:\n{array_to_send}")
+
+                # Serialize the NumPy array
+
+                data = pickle.dumps(array_to_send)
+
+                # Send the serialized data
+                client_socket.sendall(data)
+
+                # Receive the server's response
+                response = b""
+                while True:
+                    packet = client_socket.recv(4096)
+                    if not packet:
+                        break
+                    response += packet
 
                 aaa=3
                 # Send a message to the server
-                message = "Hello, Server!"
-                client_socket.send(message.encode('utf-8'))
+                # Deserialize the response
+                result = pickle.loads(response)
+                print(f"Received result from server: {result}")
 
-                # Receive the server's response
-                response = client_socket.recv(1024).decode('utf-8')
-                print(f"Received from server: {response}")
 
 
 
@@ -697,6 +715,14 @@ class Server:
             if self.stop == True:
                 break
 
+    @threaded
+    def data_transmission(self):
+        while(True):
+            self.position_transmission()
+            if self.stop == True:
+                break
+
+
     @threaded  # this thread is only for control and sending the data
     def cycle_control(self):
         while (True):
@@ -999,7 +1025,7 @@ if __name__ == '__main__':
             Rot =  a[name][1][2]
             P = Pos[0:2] / 1000  # in m
             #Robot.P_des= P_des
-            Robot.position_comm()
+            #Robot.position_comm()
 
             P_des = Robot.P_des
             # obstacle avoidance with APF
