@@ -39,7 +39,6 @@ PORT = "COM4"
 BAUD_RATE = 115200
 
 
-
 def callback_discovery_finished(status):
     if status == NetworkDiscoveryStatus.SUCCESS:
         print("  Discovery process finished successfully.")
@@ -318,8 +317,6 @@ class Server:
         self.johnny_velocity_control()
         self.position_transmission()
 
-
-
         self.pos = 0
         self.rot = 0
         self.vf = 0
@@ -330,8 +327,8 @@ class Server:
         self.Coord = []
         self.data_transmission()
         # sleep(2)
-        #self.live_plot(True)
-        #sleep(2)
+        # self.live_plot(True)
+        # sleep(2)
         self.filtercycle()
 
         self.cycle_update()
@@ -339,7 +336,6 @@ class Server:
 
         # self.cycle_plot()
         # self.johnny_plot(True)
-
 
     def position_transmission(self):
         # Create a socket object (IPv4, TCP)
@@ -349,23 +345,22 @@ class Server:
         server_ip = '192.168.0.38'  # Replace with server's IP address
         port = 12345
 
-        Pos=self.mover
+        Pos = self.mover
         try:
             # Connect to the server
             client_socket.connect((server_ip, port))
-            print("Connected to the server.")
+            #print("Connected to the server.")
 
             for name in self.subjectNames:
 
+                DATA = self.mover
 
-                DATA=self.mover
-
-                #Pos=DATA[0,:]
+                # Pos=DATA[0,:]
 
                 # Create a NumPy array to send
                 array_to_send = DATA
                 # array_to_send = Pos
-                print(f"Sending array:\n{array_to_send}")
+                # print(f"Sending array:\n{array_to_send}")
 
                 # Serialize the NumPy array
 
@@ -382,11 +377,12 @@ class Server:
                         break
                     response += packet
 
-                aaa=3
+                aaa = 3
                 # Send a message to the server
                 # Deserialize the response
                 result = pickle.loads(response)
-                print(f"Received result from server: {result}")
+                self.P_des = pickle.loads(response) / 10
+                # print(f"Received result from server: {result}")
 
 
 
@@ -398,7 +394,6 @@ class Server:
         finally:
             # Close the connection
             client_socket.close()
-
 
     def johnny_state_update(self):  # updating the state
 
@@ -435,9 +430,6 @@ class Server:
             # print(' Pos: ' + str(pos)+ ' Rot: ' + str(rot*180/np.pi))
             # #print(' Pos history: ' + str(pdata))
             # print(' Frame rate : ' + str(frame_rate))
-
-
-
 
     def johnny_velocity_control(self):  # rate controller
         # sleep(0.02)
@@ -587,7 +579,7 @@ class Server:
             # print('control cycle')
             self.data.update({subName: [data_v, data_rz]})
 
-    def onclick(self,event):
+    def onclick(self, event):
         print('%s click: button=%d, x=%d, y=%d, xdata=%f, ydata=%f' %
               ('double' if event.dblclick else 'single', event.button,
                event.x, event.y, event.xdata, event.ydata))
@@ -627,7 +619,7 @@ class Server:
         # for i in np.arange(10000):
         while (self.plot == True):
             from scipy.ndimage import shift
-            #sleep(0.05)
+            # sleep(0.05)
 
             v = self.mover[self.subjectNames[0]][2]  # convert to 10cm/s
             r0 = self.mover[self.subjectNames[0]][3]
@@ -635,16 +627,16 @@ class Server:
             xx0 = self.mover[self.subjectNames[0]][0]
             th0 = self.mover[self.subjectNames[0]][1]
             mdi = fig.canvas.mpl_connect('button_press_event', self.onclick)
-            if  self.Coord==[]:
-                #print("List is empty")
+            if self.Coord == []:
+                # print("List is empty")
                 Pdes = self.P_des * 10
 
             else:
-                #print(self.P_des)
+                # print(self.P_des)
                 Pdes = self.Coord[0:2]
                 self.P_des = self.Coord
-            #Pdes = self.P_des*10
-            #print(self.Coord)
+            # Pdes = self.P_des*10
+            # print(self.Coord)
             Vx = np.concatenate((Vx[1:], [np.linalg.norm(v)]))
             Vr = np.concatenate((Vr[1:], [r0[2]]))
             x = np.concatenate((x[1:], [xx0[0]]))
@@ -663,7 +655,7 @@ class Server:
                 ax1.draw_artist(line1)
                 ax1.draw_artist(line2)
 
-                #coords = plt.ginput(5)
+                # coords = plt.ginput(5)
                 # fill in the axes rectangle
                 fig.canvas.blit(ax1.bbox)
 
@@ -717,11 +709,10 @@ class Server:
 
     @threaded
     def data_transmission(self):
-        while(True):
+        while (True):
             self.position_transmission()
             if self.stop == True:
                 break
-
 
     @threaded  # this thread is only for control and sending the data
     def cycle_control(self):
@@ -1009,29 +1000,23 @@ if __name__ == '__main__':
             #     with mouse.Listener(on_click=Robot.on_click) as listener:
             #         listener.join()
 
-
-
             # with mouse.Listener(on_click=Robot.on_click) as listener:
             #     listener.join()
 
+            # P_des = np.array([75.4, -8.9, 8.6])
 
-
-
-
-
-            #P_des = np.array([75.4, -8.9, 8.6])
-
-            Pos=a[name][0][:]
-            Rot =  a[name][1][2]
+            Pos = a[name][0][:]
+            Rot = a[name][1][2]
             P = Pos[0:2] / 1000  # in m
-            #Robot.P_des= P_des
-            #Robot.position_comm()
+            # Robot.P_des= P_des
+            # Robot.position_comm()
 
             P_des = Robot.P_des
+            print('Desired position: '+   str(P_des))
+
             # obstacle avoidance with APF
             obs_center = np.array([238, 585]) / 1000  # in m
             obs_radi = 0.05  # in m
-
 
             # print('rho:    '+ str(rho*100) +'    v_rep: ' + str(v_rep))
             v_des = (P_des - 0.1 * Pos)
@@ -1059,24 +1044,21 @@ if __name__ == '__main__':
             # print(name + '  Linear_velocity: ' + str(ref_vel_comm) + '   Angular velocity:  ' + str(
             #     ref_vrot_comm) + '  Pos  ' + str(Pos / 10) + '  P_des  ' + str(P_des))
 
-            #print(Rot)
+            # print(Rot)
 
             # velocity open loop control (neutral input=100)
-            ref_vel_comm = 0
-            ref_vrot_comm = 0
+            # ref_vel_comm = 0
+            # ref_vrot_comm = 0
 
             # ref_v = 1000
             ref_v = 0
             ref_w = 0
 
-
-
-
             # the first three elements are the linear velocities and the last three are the angular velocities
             # Robot.ref['Johnny07'] = np.array([[ref_v, ref_v, ref_v], [ref_w, ref_w, ref_w]]) # ex: [u u u],[w w w]
             Robot.ref['Johnny07'] = np.array([[ref_vel_comm, ref_vel_comm, ref_vel_comm],
                                               [ref_vrot_comm, ref_vrot_comm, ref_vrot_comm]])  # ex: [u u u],[w w w]
-            print(p)
+            # print(p)
             # print(type(name))
             # Robot.ref['Johnny08'] = np.array([[0, 0.0, 0.0], [0.0, 0.0, 0]])
     Robot.plot = False
