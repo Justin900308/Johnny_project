@@ -1046,7 +1046,7 @@ if __name__ == '__main__':
 
             # print(Rot)
 
-            # velocity open loop control (neutral input=100)
+            # # velocity open loop control (neutral input=100)
             # ref_vel_comm = 0
             # ref_vrot_comm = 0
 
@@ -1056,7 +1056,7 @@ if __name__ == '__main__':
 
             # the first three elements are the linear velocities and the last three are the angular velocities
             # Robot.ref['Johnny07'] = np.array([[ref_v, ref_v, ref_v], [ref_w, ref_w, ref_w]]) # ex: [u u u],[w w w]
-            Robot.ref['Johnny07'] = np.array([[ref_vel_comm, ref_vel_comm, ref_vel_comm],
+            Robot.ref['Johnny08'] = np.array([[ref_vel_comm, ref_vel_comm, ref_vel_comm],
                                               [ref_vrot_comm, ref_vrot_comm, ref_vrot_comm]])  # ex: [u u u],[w w w]
             # print(p)
             # print(type(name))
